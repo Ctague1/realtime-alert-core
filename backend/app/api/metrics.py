@@ -45,6 +45,7 @@ _WORKER_COUNTERS = (
     "retries",
     "processing_failures",
     "new_alarms",
+    "events_heartbeat",
     "sensor_offline_transitions",
     "sensor_online_transitions",
 )
