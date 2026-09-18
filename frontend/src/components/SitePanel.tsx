@@ -1,5 +1,6 @@
 import type { Site } from "../types";
 import { SEVERITY_RANK } from "../types";
+import { SiteCard } from "./SiteCard";
 
 const PREVIEW_COUNT = 12;
 
@@ -7,12 +8,10 @@ interface Props {
   sites: Site[];
   /** True count of sites, from /stats. */
   total: number;
-  onSelectSite: (siteId: string) => void;
-  selectedSiteId: string | null;
   viewAllHref: string;
 }
 
-export function SitePanel({ sites, total, onSelectSite, selectedSiteId, viewAllHref }: Props) {
+export function SitePanel({ sites, total, viewAllHref }: Props) {
   const sorted = [...sites].sort(
     (a, b) =>
       SEVERITY_RANK[b.highest_active_severity ?? "informational"] -
@@ -28,20 +27,7 @@ export function SitePanel({ sites, total, onSelectSite, selectedSiteId, viewAllH
       </div>
       <div className="site-grid">
         {shown.map((site) => (
-          <button
-            key={site.site_id}
-            className={`site-card sev-${site.highest_active_severity ?? "none"} ${
-              site.site_id === selectedSiteId ? "selected" : ""
-            }`}
-            onClick={() => onSelectSite(site.site_id)}
-            title={`View ${site.site_id} timeline`}
-          >
-            <div className="site-id">{site.site_id}</div>
-            <div className="site-count">{site.active_alarm_count} active</div>
-            <div className="site-sev">
-              {site.highest_active_severity ? site.highest_active_severity : "clear"}
-            </div>
-          </button>
+          <SiteCard key={site.site_id} site={site} />
         ))}
       </div>
       {total > PREVIEW_COUNT && (

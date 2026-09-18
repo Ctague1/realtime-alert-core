@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import { BrowsePage } from "../components/BrowsePage";
+import { SiteCard } from "../components/SiteCard";
 import type { Site } from "../types";
 
 const SEVERITY_OPTIONS = [
@@ -45,19 +46,7 @@ export function AllSitesPage() {
       }
       paramsKey={paramsKey}
       listClassName="browse-sites"
-      renderRow={(site) => (
-        <a
-          className={`site-card sev-${site.highest_active_severity ?? "none"}`}
-          href={`#/?site=${encodeURIComponent(site.site_id)}`}
-          title={`View ${site.site_id} timeline`}
-        >
-          <div className="site-id">{site.site_id}</div>
-          <div className="site-count">{site.active_alarm_count} active</div>
-          <div className="site-sev">
-            {site.highest_active_severity ? site.highest_active_severity : "clear"}
-          </div>
-        </a>
-      )}
+      renderRow={(site) => <SiteCard site={site} />}
       rowKey={(s) => s.site_id}
       emptyLabel="No sites match the current filter."
     />
