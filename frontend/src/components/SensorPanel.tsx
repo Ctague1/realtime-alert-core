@@ -1,26 +1,40 @@
+import { useState } from "react";
 import type { Sensor } from "../types";
 
+const PREVIEW_COUNT = 8;
+
 export function SensorPanel({ sensors }: { sensors: Sensor[] }) {
+  const [expanded, setExpanded] = useState(false);
   const offline = sensors.filter((s) => !s.online);
   const online = sensors.filter((s) => s.online);
+  const shown = expanded ? offline : offline.slice(0, PREVIEW_COUNT);
 
   return (
-    <section className="panel">
-      <h2>Sensor state</h2>
+    <section className="panel sensor-panel">
+      <div className="panel-head">
+        <h2 className="panel-title">Sensor state</h2>
+      </div>
       <div className="panel-stats">
         <span className="sensor-ok">{online.length} online</span>
         <span className="sensor-off">{offline.length} offline</span>
       </div>
       {offline.length > 0 && (
-        <div className="offline-list">
-          {offline.slice(0, 30).map((s) => (
-            <div key={s.sensor_id} className="offline-row">
-              <span>{s.sensor_id}</span>
-              <span>{s.site_id}</span>
-              <span>last event {ago(s.last_event_ts)}</span>
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="offline-list">
+            {shown.map((s) => (
+              <div key={s.sensor_id} className="offline-row">
+                <span>{s.sensor_id}</span>
+                <span>{s.site_id}</span>
+                <span>last event {ago(s.last_event_ts)}</span>
+              </div>
+            ))}
+          </div>
+          {offline.length > PREVIEW_COUNT && (
+            <button className="panel-more" onClick={() => setExpanded((v) => !v)}>
+              {expanded ? "Show fewer" : `View all ${offline.length} offline sensors`}
+            </button>
+          )}
+        </>
       )}
       {offline.length === 0 && <div className="empty">All sensors online.</div>}
     </section>

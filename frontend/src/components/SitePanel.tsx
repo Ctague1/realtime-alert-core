@@ -15,8 +15,11 @@ export function SitePanel({ sites, onSelectSite, selectedSiteId }: Props) {
   );
 
   return (
-    <section className="panel">
-      <h2>Site state</h2>
+    <section className="panel site-panel">
+      <div className="panel-head">
+        <h2 className="panel-title">Site state</h2>
+        <span className="panel-count">{sites.length}</span>
+      </div>
       <div className="site-grid">
         {sorted.map((site) => (
           <button

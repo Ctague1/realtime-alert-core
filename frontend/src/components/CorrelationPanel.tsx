@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Correlation } from "../types";
 
 const RULE_LABEL: Record<string, string> = {
@@ -6,14 +7,23 @@ const RULE_LABEL: Record<string, string> = {
   critical_burst: "Critical burst",
 };
 
+const PREVIEW_COUNT = 5;
+
 export function CorrelationPanel({ correlations }: { correlations: Correlation[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const total = correlations.length;
+  const shown = expanded ? correlations : correlations.slice(0, PREVIEW_COUNT);
+
   return (
-    <section className="panel">
-      <h2>Correlations & escalations</h2>
-      {correlations.length === 0 && <div className="empty">No patterns detected yet.</div>}
-      {correlations.length > 0 && (
+    <section className="panel correlation-panel">
+      <div className="panel-head">
+        <h2 className="panel-title">Correlations & escalations</h2>
+        <span className="panel-count">{total}</span>
+      </div>
+      {total === 0 && <div className="empty">No patterns detected yet.</div>}
+      {total > 0 && (
         <div className="correlation-list">
-          {correlations.map((c) => (
+          {shown.map((c) => (
             <div key={c.correlation_id} className={`correlation-row corr-${c.rule}`}>
               <div className="corr-main">
                 <span className="corr-rule">{RULE_LABEL[c.rule] ?? c.rule}</span>
@@ -30,6 +40,11 @@ export function CorrelationPanel({ correlations }: { correlations: Correlation[]
             </div>
           ))}
         </div>
+      )}
+      {total > PREVIEW_COUNT && (
+        <button className="panel-more" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Show fewer" : `View all ${total} correlations`}
+        </button>
       )}
     </section>
   );

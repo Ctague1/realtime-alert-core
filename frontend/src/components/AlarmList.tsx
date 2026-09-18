@@ -1,5 +1,8 @@
+import { useState } from "react";
 import type { Alarm } from "../types";
 import { SEVERITY_RANK } from "../types";
+
+const PREVIEW_COUNT = 6;
 
 interface Props {
   alarms: Alarm[];
@@ -8,24 +11,43 @@ interface Props {
 }
 
 export function AlarmList({ alarms, onAcknowledge, onResolve }: Props) {
+  const [expanded, setExpanded] = useState(false);
   const sorted = [...alarms].sort(
     (a, b) =>
       SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
       Date.parse(b.created_at) - Date.parse(a.created_at),
   );
+  const total = sorted.length;
+  const shown = expanded ? sorted : sorted.slice(0, PREVIEW_COUNT);
 
-  if (sorted.length === 0) {
-    return <div className="empty">No active alarms — all clear.</div>;
+  if (total === 0) {
+    return (
+      <section className="panel alarm-section alarm-empty">
+        <div className="panel-head">
+          <h2 className="panel-title">Active alarms</h2>
+          <span className="panel-count">0</span>
+        </div>
+        <div className="empty">No active alarms — all clear.</div>
+      </section>
+    );
   }
 
   return (
-    <section className="alarm-section">
-      <h2>Active alarms ({sorted.length})</h2>
+    <section className="panel alarm-section">
+      <div className="panel-head">
+        <h2 className="panel-title">Active alarms</h2>
+        <span className="panel-count">{total}</span>
+      </div>
       <div className="alarm-list">
-        {sorted.map((alarm) => (
+        {shown.map((alarm) => (
           <AlarmRow key={alarm.alarm_id} alarm={alarm} onAcknowledge={onAcknowledge} onResolve={onResolve} />
         ))}
       </div>
+      {total > PREVIEW_COUNT && (
+        <button className="panel-more" onClick={() => setExpanded((v) => !v)}>
+          {expanded ? "Show fewer" : `View all ${total} active alarms`}
+        </button>
+      )}
     </section>
   );
 }
