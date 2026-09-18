@@ -104,6 +104,28 @@ export interface DashboardMessage {
   latency_ms?: LatencyReport;
 }
 
+export interface Page<T> {
+  items: T[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface Stats {
+  alarms_active: number;
+  alarms_acknowledged: number;
+  alarms_critical: number;
+  alarms_high: number;
+  alarms_medium: number;
+  alarms_low: number;
+  sensors_total: number;
+  sensors_offline: number;
+  sites_total: number;
+  sites_active: number;
+  correlations_total: number;
+}
+
 export const SEVERITY_RANK: Record<string, number> = {
   critical: 4,
   high: 3,

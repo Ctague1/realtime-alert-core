@@ -1,18 +1,17 @@
-import type { Alarm, Sensor } from "../types";
+import type { Stats } from "../types";
 import type { ConnectionStatus } from "../hooks/useDashboard";
 
 interface Props {
-  alarms: Alarm[];
-  sensors: Sensor[];
+  stats: Stats | null;
   status: ConnectionStatus;
   latency: { totalMs: number; samples: number; e2eAvgMs: number; e2eP95Ms: number };
 }
 
-export function SummaryBar({ alarms, sensors, status, latency }: Props) {
-  const active = alarms.filter((a) => a.status === "ACTIVE").length;
-  const acknowledged = alarms.filter((a) => a.status === "ACKNOWLEDGED").length;
-  const critical = alarms.filter((a) => a.severity === "critical").length;
-  const offline = sensors.filter((s) => !s.online).length;
+export function SummaryBar({ stats, status, latency }: Props) {
+  const active = stats?.alarms_active ?? 0;
+  const acknowledged = stats?.alarms_acknowledged ?? 0;
+  const critical = stats?.alarms_critical ?? 0;
+  const offline = stats?.sensors_offline ?? 0;
 
   return (
     <header className="summary-bar">
@@ -41,7 +40,7 @@ function Stat({ label, value, className }: { label: string; value: number | stri
   return (
     <div className={`stat ${className ?? ""}`}>
       <span className="stat-label">{label}</span>
-      <span className="stat-value">{value}</span>
+      <span className="stat-value">{typeof value === "number" ? value.toLocaleString() : value}</span>
     </div>
   );
 }

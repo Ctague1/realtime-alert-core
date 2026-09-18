@@ -16,6 +16,8 @@ export default defineConfig({
       "/snapshot": "http://localhost:8000",
       "/metrics": "http://localhost:8000",
       "/correlations": "http://localhost:8000",
+      "/stats": "http://localhost:8000",
+      "/browse": "http://localhost:8000",
     },
   },
 });

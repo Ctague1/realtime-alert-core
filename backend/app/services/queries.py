@@ -274,3 +274,305 @@ async def list_correlations(
         *params,
     )
     return [_row_to_correlation(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Paginated browse queries (dedicated "view all" pages)
+#
+# Every page query returns (items, total) in a single round-trip using a
+# window function for the filtered total, so the frontend never has to guess
+# the count from the size of the current page.
+# ---------------------------------------------------------------------------
+
+
+def _alarm_filter_clauses(
+    status: str, site_id: str | None, sensor_id: str | None
+) -> tuple[list[str], list]:
+    if status not in _STATUS_FILTERS:
+        raise ValueError(f"invalid status filter: {status}")
+    clauses = [_STATUS_FILTERS[status]]
+    params: list = []
+    if site_id:
+        params.append(site_id)
+        clauses.append(f"a.site_id = ${len(params)}")
+    if sensor_id:
+        params.append(sensor_id)
+        clauses.append(f"a.sensor_id = ${len(params)}")
+    return clauses, params
+
+
+_ALARM_PAGE_SELECT = """
+    SELECT count(*) OVER () AS _total,
+           a.alarm_id, a.event_id, a.sensor_id, a.site_id, a.type, a.severity,
+           a.status, a.created_at, a.acknowledged_at, a.resolved_at,
+           e.source_ts, e.confidence
+    FROM alarms a
+    JOIN events e ON e.event_id = a.event_id
+"""
+
+_ALARM_ORDER = """
+    ORDER BY CASE a.severity
+                 WHEN 'critical' THEN 4
+                 WHEN 'high' THEN 3
+                 WHEN 'medium' THEN 2
+                 WHEN 'low' THEN 1
+                 ELSE 0
+             END DESC, a.created_at DESC, a.alarm_id DESC
+"""
+
+
+async def list_alarms_page(
+    status: str = "active",
+    page: int = 1,
+    page_size: int = 50,
+    site_id: str | None = None,
+    sensor_id: str | None = None,
+) -> tuple[list[dict], int]:
+    """Return (alarms, total) for one page of the filtered alarm set."""
+    clauses, params = _alarm_filter_clauses(status, site_id, sensor_id)
+    pool = await get_db_pool()
+    offset = (page - 1) * page_size
+    params.append(page_size)
+    params.append(offset)
+    rows = await pool.fetch(
+        f"""
+        {_ALARM_PAGE_SELECT}
+        WHERE {' AND '.join(clauses)}
+        {_ALARM_ORDER}
+        LIMIT ${len(params) - 1} OFFSET ${len(params)}
+        """,
+        *params,
+    )
+    if not rows:
+        return [], await count_alarms(status, site_id, sensor_id)
+    total = rows[0]["_total"]
+    items = [_row_to_alarm(row, row["source_ts"], row["confidence"]) for row in rows]
+    return items, total
+
+
+async def count_alarms(
+    status: str = "active",
+    site_id: str | None = None,
+    sensor_id: str | None = None,
+) -> int:
+    clauses, params = _alarm_filter_clauses(status, site_id, sensor_id)
+    pool = await get_db_pool()
+    row = await pool.fetchrow(
+        f"SELECT count(*) AS n FROM alarms a WHERE {' AND '.join(clauses)}",
+        *params,
+    )
+    return row["n"]
+
+
+def _site_filter_clauses(severity: str | None) -> tuple[list[str], list]:
+    clauses: list[str] = []
+    params: list = []
+    if severity:
+        if severity == "clear":
+            clauses.append("highest_active_severity IS NULL")
+        else:
+            params.append(severity)
+            clauses.append(f"highest_active_severity = ${len(params)}")
+    return clauses, params
+
+
+_SITE_ORDER = """
+    ORDER BY CASE highest_active_severity
+                 WHEN 'critical' THEN 4
+                 WHEN 'high' THEN 3
+                 WHEN 'medium' THEN 2
+                 WHEN 'low' THEN 1
+                 ELSE 0
+             END DESC, site_id
+"""
+
+
+async def list_sites_page(
+    page: int = 1,
+    page_size: int = 50,
+    severity: str | None = None,
+) -> tuple[list[dict], int]:
+    """Return (sites, total) for one page, optionally filtered by severity."""
+    clauses, params = _site_filter_clauses(severity)
+    pool = await get_db_pool()
+    offset = (page - 1) * page_size
+    params.append(page_size)
+    params.append(offset)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = await pool.fetch(
+        f"""
+        SELECT count(*) OVER () AS _total,
+               site_id, status, active_alarm_count, highest_active_severity,
+               latest_event_ts, updated_at
+        FROM sites
+        {where}
+        {_SITE_ORDER}
+        LIMIT ${len(params) - 1} OFFSET ${len(params)}
+        """,
+        *params,
+    )
+    if not rows:
+        return [], await count_sites(severity)
+    total = rows[0]["_total"]
+    return [_row_to_site(row) for row in rows], total
+
+
+async def count_sites(severity: str | None = None) -> int:
+    clauses, params = _site_filter_clauses(severity)
+    pool = await get_db_pool()
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    row = await pool.fetchrow(f"SELECT count(*) AS n FROM sites {where}", *params)
+    return row["n"]
+
+
+def _sensor_filter_clauses(
+    site_id: str | None, online: bool | None
+) -> tuple[list[str], list]:
+    clauses: list[str] = []
+    params: list = []
+    if site_id:
+        params.append(site_id)
+        clauses.append(f"site_id = ${len(params)}")
+    if online is not None:
+        params.append(online)
+        clauses.append(f"online = ${len(params)}")
+    return clauses, params
+
+
+async def list_sensors_page(
+    page: int = 1,
+    page_size: int = 50,
+    site_id: str | None = None,
+    online: bool | None = None,
+) -> tuple[list[dict], int]:
+    """Return (sensors, total) for one page, optionally filtered."""
+    clauses, params = _sensor_filter_clauses(site_id, online)
+    pool = await get_db_pool()
+    offset = (page - 1) * page_size
+    params.append(page_size)
+    params.append(offset)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = await pool.fetch(
+        f"""
+        SELECT count(*) OVER () AS _total,
+               sensor_id, site_id, status, online, last_event_ts,
+               last_heartbeat_ts, latest_event_type, updated_at
+        FROM sensors
+        {where}
+        ORDER BY online DESC, sensor_id
+        LIMIT ${len(params) - 1} OFFSET ${len(params)}
+        """,
+        *params,
+    )
+    if not rows:
+        return [], await count_sensors(site_id, online)
+    total = rows[0]["_total"]
+    return [_row_to_sensor(row) for row in rows], total
+
+
+async def count_sensors(
+    site_id: str | None = None, online: bool | None = None
+) -> int:
+    clauses, params = _sensor_filter_clauses(site_id, online)
+    pool = await get_db_pool()
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    row = await pool.fetchrow(
+        f"SELECT count(*) AS n FROM sensors {where}", *params
+    )
+    return row["n"]
+
+
+def _correlation_filter_clauses(
+    site_id: str | None, rule: str | None
+) -> tuple[list[str], list]:
+    clauses: list[str] = []
+    params: list = []
+    if site_id:
+        params.append(site_id)
+        clauses.append(f"site_id = ${len(params)}")
+    if rule:
+        params.append(rule)
+        clauses.append(f"rule = ${len(params)}")
+    return clauses, params
+
+
+async def list_correlations_page(
+    page: int = 1,
+    page_size: int = 50,
+    site_id: str | None = None,
+    rule: str | None = None,
+) -> tuple[list[dict], int]:
+    """Return (correlations, total) for one page, optionally filtered."""
+    clauses, params = _correlation_filter_clauses(site_id, rule)
+    pool = await get_db_pool()
+    offset = (page - 1) * page_size
+    params.append(page_size)
+    params.append(offset)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = await pool.fetch(
+        f"""
+        SELECT count(*) OVER () AS _total,
+               correlation_id, rule, site_id, sensor_id, window_start, window_end,
+               severity_before, severity_after, event_ids, alarm_ids, description,
+               detected_at
+        FROM correlations
+        {where}
+        ORDER BY detected_at DESC, correlation_id DESC
+        LIMIT ${len(params) - 1} OFFSET ${len(params)}
+        """,
+        *params,
+    )
+    if not rows:
+        return [], await count_correlations(site_id, rule)
+    total = rows[0]["_total"]
+    return [_row_to_correlation(row) for row in rows], total
+
+
+async def count_correlations(
+    site_id: str | None = None, rule: str | None = None
+) -> int:
+    clauses, params = _correlation_filter_clauses(site_id, rule)
+    pool = await get_db_pool()
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    row = await pool.fetchrow(
+        f"SELECT count(*) AS n FROM correlations {where}", *params
+    )
+    return row["n"]
+
+
+async def count_stats() -> dict:
+    """Aggregate record counts used by the dashboard summary.
+
+    Single round-trip; totals are computed from the authoritative tables
+    (never derived from a truncated page of rows).
+    """
+    pool = await get_db_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT
+            (SELECT count(*) FROM alarms WHERE status <> 'RESOLVED')
+                AS alarms_active,
+            (SELECT count(*) FROM alarms WHERE status = 'ACKNOWLEDGED')
+                AS alarms_acknowledged,
+            (SELECT count(*) FROM alarms
+                WHERE status <> 'RESOLVED' AND severity = 'critical')
+                AS alarms_critical,
+            (SELECT count(*) FROM alarms
+                WHERE status <> 'RESOLVED' AND severity = 'high')
+                AS alarms_high,
+            (SELECT count(*) FROM alarms
+                WHERE status <> 'RESOLVED' AND severity = 'medium')
+                AS alarms_medium,
+            (SELECT count(*) FROM alarms
+                WHERE status <> 'RESOLVED' AND severity = 'low')
+                AS alarms_low,
+            (SELECT count(*) FROM sensors) AS sensors_total,
+            (SELECT count(*) FROM sensors WHERE online = false)
+                AS sensors_offline,
+            (SELECT count(*) FROM sites) AS sites_total,
+            (SELECT count(*) FROM sites WHERE active_alarm_count > 0)
+                AS sites_active,
+            (SELECT count(*) FROM correlations) AS correlations_total
+        """
+    )
+    return dict(row)

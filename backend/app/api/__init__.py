@@ -6,6 +6,7 @@ from .alarms import router as alarms_router
 from .health import router as health_router
 from .history import router as history_router
 from .metrics import router as metrics_router
+from .pages import router as pages_router
 from .sensors import router as sensors_router
 from .sites import router as sites_router
 from .snapshot import router as snapshot_router
@@ -20,4 +21,5 @@ routers = [
     history_router,
     ws_router,
     metrics_router,
+    pages_router,
 ]

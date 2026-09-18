@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, wsUrl } from "../api/client";
-import type { Alarm, Correlation, DashboardMessage, Sensor, Site } from "../types";
+import type { Alarm, Correlation, DashboardMessage, Sensor, Site, Stats } from "../types";
 
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting";
 
@@ -9,12 +9,16 @@ interface DashboardState {
   sites: Site[];
   sensors: Sensor[];
   correlations: Correlation[];
+  stats: Stats | null;
   status: ConnectionStatus;
   connectedSince: number | null;
   latency: { totalMs: number; samples: number; e2eAvgMs: number; e2eP95Ms: number };
 }
 
-const MAX_ALARMS = 500;
+// Homepage preview caps: the dashboard only keeps a bounded preview of
+// records in state; authoritative totals come from /stats and the dedicated
+// "view all" pages fetch everything through server-side pagination.
+const MAX_ALARMS = 100;
 const MAX_CORRELATIONS = 50;
 const E2E_WINDOW = 200;
 
@@ -24,11 +28,14 @@ function emptyState(): DashboardState {
     sites: [],
     sensors: [],
     correlations: [],
+    stats: null,
     status: "connecting",
     connectedSince: null,
     latency: { totalMs: 0, samples: 0, e2eAvgMs: 0, e2eP95Ms: 0 },
   };
 }
+
+export type Dashboard = ReturnType<typeof useDashboard>;
 
 export function useDashboard() {
   const [state, setState] = useState<DashboardState>(emptyState);
@@ -138,6 +145,15 @@ export function useDashboard() {
     }
   }, [applyMessage]);
 
+  const fetchStats = useCallback(async () => {
+    try {
+      const stats = await api.stats();
+      setState((prev) => ({ ...prev, stats }));
+    } catch (err) {
+      console.error("stats fetch failed", err);
+    }
+  }, []);
+
   const connect = useCallback(() => {
     const url = wsUrl();
     const ws = new WebSocket(url);
@@ -154,6 +170,7 @@ export function useDashboard() {
       // net in case that message is missed.
       if (snapshotTimerRef.current) window.clearTimeout(snapshotTimerRef.current);
       snapshotTimerRef.current = window.setTimeout(() => void fetchSnapshot(), 3000);
+      void fetchStats();
     };
 
     ws.onmessage = (event) => {
@@ -178,12 +195,13 @@ export function useDashboard() {
   }, [applyMessage, fetchSnapshot]);
 
   const pollPeriodic = useCallback(async () => {
-    const [sensors, sites, correlations] = await Promise.all([
+    const [stats, sensors, sites, correlations] = await Promise.all([
+      api.stats(),
       api.sensors(),
       api.sites(),
-      api.correlations(),
+      api.correlations(20),
     ]);
-    setState((prev) => ({ ...prev, sensors, sites, correlations }));
+    setState((prev) => ({ ...prev, stats, sensors, sites, correlations }));
     // Report client-side end-to-end latency samples to the backend so
     // /metrics exposes real e2e numbers (not just the header display).
     const window = e2eRef.current;

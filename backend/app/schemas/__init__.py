@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Generic, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
+
+T = TypeVar("T")
 
 
 class SensorEvent(BaseModel):
@@ -100,3 +102,33 @@ class SiteTimeline(BaseModel):
 class SensorTimeline(BaseModel):
     sensor: SensorOut
     events: list[TimelineEvent]
+
+
+class Page(BaseModel, Generic[T]):
+    """Generic server-side paginated response.
+
+    ``total`` is the true number of matching records (after filters), so
+    clients can render "Showing X-Y of N" without loading the full dataset.
+    """
+
+    items: list[T]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+class StatsOut(BaseModel):
+    """Authoritative record counts for the dashboard summary and panels."""
+
+    alarms_active: int
+    alarms_acknowledged: int
+    alarms_critical: int
+    alarms_high: int
+    alarms_medium: int
+    alarms_low: int
+    sensors_total: int
+    sensors_offline: int
+    sites_total: int
+    sites_active: int
+    correlations_total: int

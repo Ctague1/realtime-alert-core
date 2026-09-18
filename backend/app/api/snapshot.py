@@ -21,7 +21,11 @@ async def snapshot() -> dict:
 
 
 async def _fetch_snapshot() -> tuple[list[dict], list[dict], list[dict]]:
-    alarms = await queries.list_alarms(status="active", limit=500)
+    # Bounded homepage previews only: the true record counts come from /stats,
+    # and the dedicated "view all" pages fetch the full dataset through
+    # server-side pagination (/browse/*), so the snapshot never loads the
+    # entire table into the dashboard.
+    alarms = await queries.list_alarms(status="active", limit=100)
     sites = await queries.list_sites()
     sensors = await queries.list_sensors(limit=2000)
     return alarms, sites, sensors

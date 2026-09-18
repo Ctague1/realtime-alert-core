@@ -1,24 +1,25 @@
-import { useState } from "react";
 import type { Alarm } from "../types";
 import { SEVERITY_RANK } from "../types";
+import { AlarmRow } from "./AlarmRow";
 
-const PREVIEW_COUNT = 6;
+const PREVIEW_COUNT = 8;
 
 interface Props {
   alarms: Alarm[];
+  /** True count of matching (active) alarms, from /stats. */
+  total: number;
   onAcknowledge: (alarm: Alarm) => void;
   onResolve: (alarm: Alarm) => void;
+  viewAllHref: string;
 }
 
-export function AlarmList({ alarms, onAcknowledge, onResolve }: Props) {
-  const [expanded, setExpanded] = useState(false);
+export function AlarmList({ alarms, total, onAcknowledge, onResolve, viewAllHref }: Props) {
   const sorted = [...alarms].sort(
     (a, b) =>
       SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
       Date.parse(b.created_at) - Date.parse(a.created_at),
   );
-  const total = sorted.length;
-  const shown = expanded ? sorted : sorted.slice(0, PREVIEW_COUNT);
+  const shown = sorted.slice(0, PREVIEW_COUNT);
 
   if (total === 0) {
     return (
@@ -36,7 +37,7 @@ export function AlarmList({ alarms, onAcknowledge, onResolve }: Props) {
     <section className="panel alarm-section">
       <div className="panel-head">
         <h2 className="panel-title">Active alarms</h2>
-        <span className="panel-count">{total}</span>
+        <span className="panel-count">{total.toLocaleString()}</span>
       </div>
       <div className="alarm-list">
         {shown.map((alarm) => (
@@ -44,48 +45,10 @@ export function AlarmList({ alarms, onAcknowledge, onResolve }: Props) {
         ))}
       </div>
       {total > PREVIEW_COUNT && (
-        <button className="panel-more" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? "Show fewer" : `View all ${total} active alarms`}
-        </button>
+        <a className="panel-more" href={viewAllHref}>
+          View all {total.toLocaleString()} active alarms
+        </a>
       )}
     </section>
   );
-}
-
-function AlarmRow({ alarm, onAcknowledge, onResolve }: {
-  alarm: Alarm;
-  onAcknowledge: (alarm: Alarm) => void;
-  onResolve: (alarm: Alarm) => void;
-}) {
-  const isCritical = alarm.severity === "critical";
-  return (
-    <div className={`alarm-row severity-${alarm.severity} status-${alarm.status.toLowerCase()}`}>
-      <div className="alarm-main">
-        {isCritical && <span className="critical-label">CRITICAL</span>}
-        <span className="alarm-type">{alarm.type}</span>
-        <span className="alarm-id">{alarm.event_id}</span>
-      </div>
-      <div className="alarm-meta">
-        <span>site {alarm.site_id}</span>
-        <span>sensor {alarm.sensor_id}</span>
-        <span>{formatTs(alarm.source_ts ?? alarm.created_at)}</span>
-        <span className={`badge badge-${alarm.severity}`}>{alarm.severity}</span>
-        <span className={`badge badge-status ${alarm.status.toLowerCase()}`}>{alarm.status}</span>
-      </div>
-      <div className="alarm-actions">
-        {alarm.status === "ACTIVE" && (
-          <button onClick={() => onAcknowledge(alarm)}>Acknowledge</button>
-        )}
-        {alarm.status !== "RESOLVED" && (
-          <button onClick={() => onResolve(alarm)}>Resolve</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function formatTs(ts: string): string {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return ts;
-  return d.toLocaleTimeString([], { hour12: false });
 }

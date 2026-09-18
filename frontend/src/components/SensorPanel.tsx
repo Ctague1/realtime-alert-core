@@ -1,13 +1,18 @@
-import { useState } from "react";
 import type { Sensor } from "../types";
+import { ago } from "../lib/format";
 
 const PREVIEW_COUNT = 8;
 
-export function SensorPanel({ sensors }: { sensors: Sensor[] }) {
-  const [expanded, setExpanded] = useState(false);
+interface Props {
+  sensors: Sensor[];
+  onlineCount: number;
+  offlineCount: number;
+  viewAllOfflineHref: string;
+}
+
+export function SensorPanel({ sensors, onlineCount, offlineCount, viewAllOfflineHref }: Props) {
   const offline = sensors.filter((s) => !s.online);
-  const online = sensors.filter((s) => s.online);
-  const shown = expanded ? offline : offline.slice(0, PREVIEW_COUNT);
+  const shown = offline.slice(0, PREVIEW_COUNT);
 
   return (
     <section className="panel sensor-panel">
@@ -15,10 +20,10 @@ export function SensorPanel({ sensors }: { sensors: Sensor[] }) {
         <h2 className="panel-title">Sensor state</h2>
       </div>
       <div className="panel-stats">
-        <span className="sensor-ok">{online.length} online</span>
-        <span className="sensor-off">{offline.length} offline</span>
+        <span className="sensor-ok">{onlineCount.toLocaleString()} online</span>
+        <span className="sensor-off">{offlineCount.toLocaleString()} offline</span>
       </div>
-      {offline.length > 0 && (
+      {offlineCount > 0 && (
         <>
           <div className="offline-list">
             {shown.map((s) => (
@@ -29,23 +34,14 @@ export function SensorPanel({ sensors }: { sensors: Sensor[] }) {
               </div>
             ))}
           </div>
-          {offline.length > PREVIEW_COUNT && (
-            <button className="panel-more" onClick={() => setExpanded((v) => !v)}>
-              {expanded ? "Show fewer" : `View all ${offline.length} offline sensors`}
-            </button>
+          {offlineCount > PREVIEW_COUNT && (
+            <a className="panel-more" href={viewAllOfflineHref}>
+              View all {offlineCount.toLocaleString()} offline sensors
+            </a>
           )}
         </>
       )}
-      {offline.length === 0 && <div className="empty">All sensors online.</div>}
+      {offlineCount === 0 && <div className="empty">All sensors online.</div>}
     </section>
   );
-}
-
-function ago(ts?: string | null): string {
-  if (!ts) return "never";
-  const secs = Math.round((Date.now() - Date.parse(ts)) / 1000);
-  if (secs < 0) return "now";
-  if (secs < 60) return `${secs}s ago`;
-  if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
-  return `${Math.round(secs / 3600)}h ago`;
 }
