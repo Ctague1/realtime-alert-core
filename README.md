@@ -7,7 +7,7 @@ events durably in **Redis Streams**, processes them with **at-least-once**
 semantics into authoritative **PostgreSQL** state, and streams live updates to
 a **React** operator dashboard.
 
-> **Guarantee (the short answer):** once an event is *accepted* — i.e. appended
+> **Guarantee (the short answer):** once an event is _accepted_ — i.e. appended
 > to the Redis Stream — it is never silently lost. A burst, a consumer
 > disconnect, or a worker/process restart cannot lose it, because the event is
 > durably buffered before processing, every message is explicitly
@@ -70,14 +70,14 @@ a **React** operator dashboard.
 
 ### Components
 
-| Component | Responsibility |
-|---|---|
-| `scripts/stream.py` | Provided sensor-fleet simulator (WebSocket server on `:8765`). Not part of the Sentinel pipeline. Runs manually on the host, or as the optional `sensor` Compose service (`docker compose --profile sensor up`). |
-| **backend** (FastAPI) | Connects to the sensor stream, validates events, appends them to the Redis Stream (the **durability boundary**). Serves the REST API, the dashboard WebSocket, `/metrics` and `/snapshot`. Its dashboard hub subscribes to the transient pub/sub channel and **auto-resubscribes** if that connection drops (e.g. after a Redis restart). |
-| **worker** (separate process) | Redis Streams consumer-group consumer. Processes events, persists authoritative state to PostgreSQL, ACKs only after commit, recovers abandoned pending messages, and runs the sensor-liveness and site-state aggregation tasks. Runs in its own container so a worker restart is independent of a backend restart. |
-| **redis** | Durable event buffer (Redis Streams with AOF persistence). Also hosts the transient dashboard pub/sub channel and the `sensor:liveness` hash. |
-| **postgres** | Authoritative datastore for `sites`, `sensors`, `events`, `alarms` and acknowledgement/resolution state. |
-| **frontend** (React + Vite) | Live operator dashboard; WebSocket updates; reconnect + snapshot reconciliation; acknowledge/resolve actions. |
+| Component                     | Responsibility                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/stream.py`           | Provided sensor-fleet simulator (WebSocket server on `:8765`). Not part of the Sentinel pipeline. Runs manually on the host, or as the optional `sensor` Compose service (`docker compose --profile sensor up`).                                                                                                                          |
+| **backend** (FastAPI)         | Connects to the sensor stream, validates events, appends them to the Redis Stream (the **durability boundary**). Serves the REST API, the dashboard WebSocket, `/metrics` and `/snapshot`. Its dashboard hub subscribes to the transient pub/sub channel and **auto-resubscribes** if that connection drops (e.g. after a Redis restart). |
+| **worker** (separate process) | Redis Streams consumer-group consumer. Processes events, persists authoritative state to PostgreSQL, ACKs only after commit, recovers abandoned pending messages, and runs the sensor-liveness and site-state aggregation tasks. Runs in its own container so a worker restart is independent of a backend restart.                       |
+| **redis**                     | Durable event buffer (Redis Streams with AOF persistence). Also hosts the transient dashboard pub/sub channel and the `sensor:liveness` hash.                                                                                                                                                                                             |
+| **postgres**                  | Authoritative datastore for `sites`, `sensors`, `events`, `alarms` and acknowledgement/resolution state.                                                                                                                                                                                                                                  |
+| **frontend** (React + Vite)   | Live operator dashboard; WebSocket updates; reconnect + snapshot reconciliation; acknowledge/resolve actions.                                                                                                                                                                                                                             |
 
 ---
 
@@ -86,7 +86,7 @@ a **React** operator dashboard.
 - **Python 3 + FastAPI** — asynchronous ingestion, REST API, WebSocket
   dashboard, health endpoints. `asyncpg` for PostgreSQL, `redis.asyncio` for
   Redis, `websockets` for the outbound sensor connection.
-- **WebSocket** — the sensor protocol *and* the live dashboard transport.
+- **WebSocket** — the sensor protocol _and_ the live dashboard transport.
 - **Redis Streams** — the durable event buffer and processing pipeline with
   consumer groups, explicit acknowledgements and pending-entry recovery.
   Plain Redis Pub/Sub is used **only** for the transient dashboard update
@@ -131,8 +131,8 @@ dashboard received - measured client-side against source_ts
 ### What "accepted" means
 
 An event is **accepted by Project Sentinel only when it has been appended to
-the Redis Stream** (`XADD` succeeded). Until then it is *received but not
-accepted* — the backend never claims durability for it. This is the
+the Redis Stream** (`XADD` succeeded). Until then it is _received but not
+accepted_ — the backend never claims durability for it. This is the
 [durability boundary](#event-lifecycle): nothing before the `XADD` is covered.
 
 ### What "durable" means
@@ -140,7 +140,7 @@ accepted* — the backend never claims durability for it. This is the
 The Redis Stream runs with **AOF persistence (`appendfsync everysec`)**. On a
 Redis restart, the stream and consumer-group pending entries are reloaded from
 the AOF. Limitation: with `everysec`, up to ~1 second of very recent appends
-can be lost on a *hard* Redis crash (see
+can be lost on a _hard_ Redis crash (see
 [Redis restart](#e-redis-restart) and
 [Trade-offs](#trade-offs--known-limitations)). Tune `appendfsync always` for a
 tighter window at a throughput cost.
@@ -180,7 +180,7 @@ memory:
 1. **Durable backlog** — the Redis Stream is the buffer. If processing slows
    down, accepted events queue in the stream instead of being dropped.
 2. **Bounded ingestion buffer** — the sensor consumer uses a small bounded
-   deque (10k) as a *temporary* buffer for a Redis blip. If Redis is
+   deque (10k) as a _temporary_ buffer for a Redis blip. If Redis is
    unavailable the consumer **pauses reading** from the sensor WebSocket,
    propagating TCP backpressure to the generator (whose `send` then blocks
    instead of discarding).
@@ -202,13 +202,13 @@ drains it (verified by failure test **B**).
 `severity_hint` from the sensor is **not trusted**. The effective severity is
 derived deterministically from the event type (`backend/app/processing/severity.py`):
 
-| Event type | Effective severity |
-|---|---|
-| `fire_alarm`, `panic_button` | **critical** |
-| `smoke_detected`, `perimeter_breach`, `door_forced` | high |
-| `camera_offline`, `motion_detected`, `object_detected` | medium |
-| `heartbeat` | informational |
-| any unknown type | low |
+| Event type                                             | Effective severity |
+| ------------------------------------------------------ | ------------------ |
+| `fire_alarm`, `panic_button`                           | **critical**       |
+| `smoke_detected`, `perimeter_breach`, `door_forced`    | high               |
+| `camera_offline`, `motion_detected`, `object_detected` | medium             |
+| `heartbeat`                                            | informational      |
+| any unknown type                                       | low                |
 
 The same type always maps to the same severity.
 
@@ -220,8 +220,8 @@ Liveness is tracked per sensor in the `sensor:liveness` Redis hash. The
 ingestion records the **acceptance time** (Redis append timestamp) whenever an
 event for a sensor is durably accepted.
 
-- **Any event refreshes liveness** (heartbeat *or* alarm). Because liveness is
-  keyed to *acceptance* (Redis), it is independent of processing lag — a
+- **Any event refreshes liveness** (heartbeat _or_ alarm). Because liveness is
+  keyed to _acceptance_ (Redis), it is independent of processing lag — a
   busy-but-healthy worker never makes live sensors look offline.
 - **Offline detection** — a sensor is declared offline when no event has been
   accepted for `HEARTBEAT_OFFLINE_TIMEOUT` (default **30s**). The worker's
@@ -236,7 +236,7 @@ event for a sensor is durably accepted.
   offline does not create, cancel or resolve any alarm, and the dashboard
   shows sensor status and alarm status independently.
 
-Note: because the provided generator emits events for *all* sensors
+Note: because the provided generator emits events for _all_ sensors
 simultaneously, the heartbeat failure-test stops the host `stream.py` process
 to simulate heartbeats ceasing. The per-sensor path is covered precisely by
 the pytest integration test (`test_stale_sensor_becomes_offline`).
@@ -251,11 +251,11 @@ patterns in recent, non-resolved, non-escalated alarms and **escalates** the
 alarms involved; every detection is recorded in the `correlations` table and
 pushed to the dashboard.
 
-| Rule | Pattern | Escalation |
-|---|---|---|
-| `repeat_event` | ≥ `CORRELATION_REPEAT_THRESHOLD` (3) alarms of the **same type** from the **same sensor** within `CORRELATION_WINDOW` (60s) | involved alarms move **one severity step up** (low→medium→high→critical) |
-| `multi_signal_site` | ≥ `CORRELATION_MULTI_SIGNAL_THRESHOLD` (3) **distinct alarm types** at the **same site** within the window, with at least one high/critical | involved alarms escalate to **critical** |
-| `critical_burst` | ≥ `CORRELATION_BURST_THRESHOLD` (3) **critical** alarms at the **same site** within the window | recorded as a burst incident (severity stays critical) |
+| Rule                | Pattern                                                                                                                                     | Escalation                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `repeat_event`      | ≥ `CORRELATION_REPEAT_THRESHOLD` (3) alarms of the **same type** from the **same sensor** within `CORRELATION_WINDOW` (60s)                 | involved alarms move **one severity step up** (low→medium→high→critical) |
+| `multi_signal_site` | ≥ `CORRELATION_MULTI_SIGNAL_THRESHOLD` (3) **distinct alarm types** at the **same site** within the window, with at least one high/critical | involved alarms escalate to **critical**                                 |
+| `critical_burst`    | ≥ `CORRELATION_BURST_THRESHOLD` (3) **critical** alarms at the **same site** within the window                                              | recorded as a burst incident (severity stays critical)                   |
 
 Escalation is **idempotent**: only `escalated = false` alarms are considered,
 every escalation `UPDATE` is guarded on that flag, and a Redis lock
@@ -266,10 +266,10 @@ them up the dashboard's severity ordering.
 
 History is available through the timeline API and dashboard:
 
-* `GET /sites/{site_id}/timeline` — the site's current state, recent events
+- `GET /sites/{site_id}/timeline` — the site's current state, recent events
   (with alarm status + escalation flag) and its correlated incidents.
-* `GET /sensors/{sensor_id}/timeline` — a sensor's recent events.
-* `GET /correlations` — detected patterns / escalations (optionally
+- `GET /sensors/{sensor_id}/timeline` — a sensor's recent events.
+- `GET /correlations` — detected patterns / escalations (optionally
   `?site_id=`).
 
 The dashboard shows a **Correlations & escalations** panel (live via WebSocket
@@ -283,26 +283,31 @@ reconnects.
 ## Failure recovery
 
 ### A. Sustained baseline load
+
 The generator runs at `RATE=200` (its effective rate is higher because of
 built-in bursts). Verified: events accepted, processed, dashboard updated, no
 unexpected loss, zero processing failures, backlog controlled. See
 [Performance](#performance).
 
 ### B. Burst traffic
+
 A 500-event burst is absorbed by the durable backlog and drained; pending
 returns to within one in-flight batch. No events discarded.
 
 ### C. Worker restart
+
 Accepted events remain in the Redis stream; unacknowledged messages are
 reclaimed via `XAUTOCLAIM` and reprocessed idempotently; processing resumes;
 no duplicate logical events are created (verified by `count(*) =
 count(DISTINCT event_id)` in a single snapshot).
 
 ### D. Backend restart
+
 The backend reconnects to the sensor stream with exponential backoff; the
 durable backlog and PostgreSQL state remain available; processing resumes.
 
 ### E. Redis restart
+
 Redis is configured with AOF (`appendfsync everysec`). On restart the stream
 and pending entries are reloaded from AOF and processing resumes. The backend
 dashboard hub re-subscribes to its pub/sub channel automatically after the
@@ -312,14 +317,17 @@ may be lost on a hard crash with this configuration — this is the documented
 guarantee; increase fsync strength for a tighter window.
 
 ### F. Dashboard disconnect
+
 The WebSocket closes while events continue. On reconnect the dashboard
 receives a fresh authoritative **snapshot** from the backend and reconciles
 state; it never depends on having received every transient message.
 
 ### G. Duplicate events
+
 The same `event_id` delivered 3× → exactly one event row and one alarm row.
 
 ### H. Sensor heartbeat failure
+
 When heartbeats cease, sensors go offline after the documented timeout,
 tracked separately from alarm state; they return online when events flow
 again.
@@ -361,17 +369,17 @@ backend restart because PostgreSQL is authoritative.
 
 ## Performance
 
-Measured on a single workstation (see *test environment* below) with the
+Measured on a single workstation (see _test environment_ below) with the
 provided generator at `RATE=200` — whose effective sustained rate is ~900–1100
 events/s because the simulator emits a 500-event burst ~1% of the time.
 
-| Metric | p50 | p95 | p99 |
-|---|---|---|---|
-| Ingestion latency (receive → Redis append) | 0.07 ms | 0.5 ms | 1.8 ms |
-| Queue latency (append → worker read) | ~80 ms | ~500 ms | ~600 ms |
-| In-process processing (worker batch persist → commit) | ~55 ms | ~68 ms | ~73 ms |
-| Total processing (backend receive → DB commit) | ~137 ms | ~562 ms | ~673 ms |
-| End-to-end dashboard (source → client render) | measured client-side (avg/p95 shown in the dashboard header) |
+| Metric                                                | p50                                                          | p95     | p99     |
+| ----------------------------------------------------- | ------------------------------------------------------------ | ------- | ------- |
+| Ingestion latency (receive → Redis append)            | 0.07 ms                                                      | 0.5 ms  | 1.8 ms  |
+| Queue latency (append → worker read)                  | ~80 ms                                                       | ~500 ms | ~600 ms |
+| In-process processing (worker batch persist → commit) | ~55 ms                                                       | ~68 ms  | ~73 ms  |
+| Total processing (backend receive → DB commit)        | ~137 ms                                                      | ~562 ms | ~673 ms |
+| End-to-end dashboard (source → client render)         | measured client-side (avg/p95 shown in the dashboard header) |
 
 - **Throughput:** ~1000 events/s sustained through ingest → Redis → worker →
   PostgreSQL with zero processing failures and no unexpected loss (failure
@@ -383,12 +391,12 @@ events/s because the simulator emits a 500-event burst ~1% of the time.
 
 Interpretation:
 
-- *In-process processing latency* is well under the **100 ms** target: the
+- _In-process processing latency_ is well under the **100 ms** target: the
   worker persists each batch of up to 200 events in ~55 ms (p50).
-- *Queueing latency* is the time an accepted event waits in the durable
+- _Queueing latency_ is the time an accepted event waits in the durable
   backlog before a worker reads it; it rises during bursts and falls back to
   zero as the backlog drains (test **B**).
-- *End-to-end latency* = source → ingest → Redis → queue → process → DB →
+- _End-to-end latency_ = source → ingest → Redis → queue → process → DB →
   pub/sub → WS → client render.
 
 ### Test environment
@@ -424,7 +432,7 @@ bash scripts/failure_tests/g_duplicates.sh
 bash scripts/failure_tests/h_heartbeat_failure.sh
 ```
 
-Backend unit + integration tests (43 tests) are in `backend/tests/`:
+Backend unit + integration tests (54 tests) are in `backend/tests/`:
 
 ```bash
 cd backend && python -m pytest -q
@@ -509,7 +517,7 @@ cd frontend && npm install && npm run dev
    requirements and to make dedup DB-level and unambiguous.
 2. **Redis AOF `everysec`.** On a hard Redis crash, up to ~1s of very recent
    appends may be lost (events received but not yet fsync'd). Raise
-   `appendfsync` for a tighter guarantee; every accepted event *before* the
+   `appendfsync` for a tighter guarantee; every accepted event _before_ the
    loss window is preserved.
 3. **Sensor→site mapping is unstable in the simulator.** `stream.py` picks
    `sensor_id` and `site_id` independently, so a sensor's `sites.site_id`
