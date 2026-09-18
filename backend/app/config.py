@@ -108,6 +108,38 @@ class Settings:
         default_factory=lambda: float(os.getenv("SITE_RECOMPUTE_INTERVAL", "5.0"))
     )
 
+    # --- Correlation / pattern detection ------------------------------------
+    # The worker scans recent non-escalated alarms for deterministic patterns
+    # every `correlation_scan_interval` and escalates the alarms involved.
+    correlation_scan_interval: float = field(
+        default_factory=lambda: float(os.getenv("CORRELATION_SCAN_INTERVAL", "5.0"))
+    )
+    # Correlation window: only alarms created within the last N seconds are
+    # considered part of a pattern.
+    correlation_window: float = field(
+        default_factory=lambda: float(os.getenv("CORRELATION_WINDOW", "60.0"))
+    )
+    # repeat_event: N alarms of the same type from the same sensor within the
+    # window -> escalate the involved alarms one severity step.
+    correlation_repeat_threshold: int = field(
+        default_factory=lambda: int(os.getenv("CORRELATION_REPEAT_THRESHOLD", "3"))
+    )
+    # multi_signal_site: N distinct alarm types at the same site within the
+    # window (at least one high/critical) -> escalate the involved alarms to
+    # critical.
+    correlation_multi_signal_threshold: int = field(
+        default_factory=lambda: int(os.getenv("CORRELATION_MULTI_SIGNAL_THRESHOLD", "3"))
+    )
+    # critical_burst: N critical alarms at the same site within the window ->
+    # recorded as a burst incident (severity stays critical).
+    correlation_burst_threshold: int = field(
+        default_factory=lambda: int(os.getenv("CORRELATION_BURST_THRESHOLD", "3"))
+    )
+    # Redis lock so multiple worker replicas never scan concurrently.
+    correlation_lock_key: str = field(
+        default_factory=lambda: os.getenv("CORRELATION_LOCK_KEY", "sentinel:correlation:lock")
+    )
+
 
 _settings: Settings | None = None
 

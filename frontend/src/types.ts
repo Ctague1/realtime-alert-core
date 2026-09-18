@@ -45,6 +45,46 @@ export interface LatencyReport {
   total?: number;
 }
 
+export interface TimelineEvent {
+  event_id: string;
+  sensor_id: string;
+  site_id: string;
+  type: string;
+  severity: string;
+  confidence?: number | null;
+  source_ts: string;
+  processed_at?: string | null;
+  alarm_id?: number | null;
+  alarm_status?: string | null;
+  escalated?: boolean | null;
+}
+
+export interface Correlation {
+  correlation_id: number;
+  rule: string;
+  site_id: string;
+  sensor_id?: string | null;
+  window_start: string;
+  window_end: string;
+  severity_before: string;
+  severity_after: string;
+  event_ids: string[];
+  alarm_ids: number[];
+  description: string;
+  detected_at: string;
+}
+
+export interface SiteTimeline {
+  site: Site;
+  events: TimelineEvent[];
+  correlations: Correlation[];
+}
+
+export interface SensorTimeline {
+  sensor: Sensor;
+  events: TimelineEvent[];
+}
+
 export interface AlarmUpdate {
   alarm: Alarm;
   sensor?: Sensor | null;
@@ -52,10 +92,11 @@ export interface AlarmUpdate {
 }
 
 export interface DashboardMessage {
-  kind: "snapshot" | "alarm" | "alarms" | "sensor" | "sites" | "ping";
+  kind: "snapshot" | "alarm" | "alarms" | "sensor" | "sites" | "correlations" | "ping";
   alarms?: Alarm[];
   sites?: Site[];
   sensors?: Sensor[];
+  correlations?: Correlation[];
   alarm?: Alarm;
   site?: Site;
   sensor?: Sensor;

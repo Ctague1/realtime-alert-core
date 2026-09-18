@@ -6,30 +6,21 @@ A real uvicorn server is started on the test event loop so the full app
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import socket
 import uuid
 
 import httpx
 import pytest_asyncio
-import uvicorn
 
-from app.config import get_settings, reload_settings
+from app.config import reload_settings
 from app.db import get_db_pool
-from app.services.state_service import process_event
 from app.processing.normalize import normalize_event
+from app.services.state_service import process_event
 from datetime import datetime, timezone
 
 os.environ["SENSOR_INGESTION_ENABLED"] = "false"
 reload_settings()
-
-
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
 
 
 async def _seed_event(event_type: str, sensor_id: str, site_id: str) -> dict:
@@ -44,28 +35,6 @@ async def _seed_event(event_type: str, sensor_id: str, site_id: str) -> dict:
     norm = normalize_event(evt, received_at=datetime.now(timezone.utc), redis_ms=0)
     await process_event(norm, datetime.now(timezone.utc))
     return evt
-
-
-@pytest_asyncio.fixture
-async def api_server():
-    from app.main import create_app
-
-    app = create_app()
-    port = _free_port()
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
-    server = uvicorn.Server(config)
-    task = asyncio.create_task(server.serve())
-    for _ in range(100):
-        await asyncio.sleep(0.05)
-        if server.started:
-            break
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    task.cancel()
-    try:
-        await task
-    except (asyncio.CancelledError, Exception):  # noqa: BLE001
-        pass
 
 
 @pytest_asyncio.fixture

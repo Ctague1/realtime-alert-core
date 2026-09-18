@@ -15,6 +15,7 @@ export default defineConfig({
       "/sensors": "http://localhost:8000",
       "/snapshot": "http://localhost:8000",
       "/metrics": "http://localhost:8000",
+      "/correlations": "http://localhost:8000",
     },
   },
 });

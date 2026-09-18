@@ -60,3 +60,43 @@ class Snapshot(BaseModel):
     alarms: list[AlarmOut]
     sites: list[SiteOut]
     sensors: list[SensorOut]
+
+
+class TimelineEvent(BaseModel):
+    event_id: str
+    sensor_id: str
+    site_id: str
+    type: str
+    severity: str
+    confidence: Optional[float] = None
+    source_ts: str
+    processed_at: Optional[str] = None
+    alarm_id: Optional[int] = None
+    alarm_status: Optional[str] = None
+    escalated: Optional[bool] = None
+
+
+class CorrelationOut(BaseModel):
+    correlation_id: int
+    rule: str
+    site_id: str
+    sensor_id: Optional[str] = None
+    window_start: str
+    window_end: str
+    severity_before: str
+    severity_after: str
+    event_ids: list[str]
+    alarm_ids: list[int]
+    description: str = ""
+    detected_at: str
+
+
+class SiteTimeline(BaseModel):
+    site: SiteOut
+    events: list[TimelineEvent]
+    correlations: list[CorrelationOut]
+
+
+class SensorTimeline(BaseModel):
+    sensor: SensorOut
+    events: list[TimelineEvent]

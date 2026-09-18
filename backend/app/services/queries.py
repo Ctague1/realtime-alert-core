@@ -66,6 +66,21 @@ async def get_alarm(alarm_id: int) -> dict | None:
     return _row_to_alarm(row, row["source_ts"], row["confidence"])
 
 
+async def get_alarms(alarm_ids: list[int]) -> dict[int, dict]:
+    """Fetch many alarms in a single query (used by the correlation scan)."""
+    if not alarm_ids:
+        return {}
+    pool = await get_db_pool()
+    rows = await pool.fetch(
+        f"{_ALARM_SELECT} WHERE a.alarm_id = ANY($1::bigint[])",
+        alarm_ids,
+    )
+    return {
+        row["alarm_id"]: _row_to_alarm(row, row["source_ts"], row["confidence"])
+        for row in rows
+    }
+
+
 async def list_sites() -> list[dict]:
     pool = await get_db_pool()
     rows = await pool.fetch(
@@ -143,3 +158,119 @@ async def list_sensor_ids() -> list[str]:
     pool = await get_db_pool()
     rows = await pool.fetch("SELECT sensor_id FROM sensors")
     return [row["sensor_id"] for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# History / timeline
+# ---------------------------------------------------------------------------
+
+_TIMELINE_SELECT = """
+    SELECT e.event_id, e.sensor_id, e.site_id, e.type, e.severity, e.confidence,
+           e.source_ts, e.processed_at,
+           a.alarm_id, a.status AS alarm_status, a.escalated
+    FROM events e
+    LEFT JOIN alarms a ON a.event_id = e.event_id
+"""
+
+
+def _row_to_timeline_event(row) -> dict:
+    return {
+        "event_id": row["event_id"],
+        "sensor_id": row["sensor_id"],
+        "site_id": row["site_id"],
+        "type": row["type"],
+        "severity": row["severity"],
+        "confidence": row["confidence"],
+        "source_ts": _iso(row["source_ts"]),
+        "processed_at": _iso(row["processed_at"]),
+        "alarm_id": row["alarm_id"],
+        "alarm_status": row["alarm_status"],
+        "escalated": row["escalated"],
+    }
+
+
+async def list_site_events(site_id: str, limit: int = 100) -> list[dict]:
+    pool = await get_db_pool()
+    rows = await pool.fetch(
+        f"""
+        {_TIMELINE_SELECT}
+        WHERE e.site_id = $1
+        ORDER BY e.source_ts DESC, e.event_id
+        LIMIT $2
+        """,
+        site_id,
+        limit,
+    )
+    return [_row_to_timeline_event(row) for row in rows]
+
+
+async def list_sensor_events(sensor_id: str, limit: int = 100) -> list[dict]:
+    pool = await get_db_pool()
+    rows = await pool.fetch(
+        f"""
+        {_TIMELINE_SELECT}
+        WHERE e.sensor_id = $1
+        ORDER BY e.source_ts DESC, e.event_id
+        LIMIT $2
+        """,
+        sensor_id,
+        limit,
+    )
+    return [_row_to_timeline_event(row) for row in rows]
+
+
+def _row_to_correlation(row) -> dict:
+    return {
+        "correlation_id": row["correlation_id"],
+        "rule": row["rule"],
+        "site_id": row["site_id"],
+        "sensor_id": row["sensor_id"],
+        "window_start": _iso(row["window_start"]),
+        "window_end": _iso(row["window_end"]),
+        "severity_before": row["severity_before"],
+        "severity_after": row["severity_after"],
+        "event_ids": row["event_ids"],
+        "alarm_ids": row["alarm_ids"],
+        "description": row["description"],
+        "detected_at": _iso(row["detected_at"]),
+    }
+
+
+async def get_correlation(correlation_id: int) -> dict | None:
+    pool = await get_db_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT correlation_id, rule, site_id, sensor_id, window_start, window_end,
+               severity_before, severity_after, event_ids, alarm_ids, description,
+               detected_at
+        FROM correlations WHERE correlation_id = $1
+        """,
+        correlation_id,
+    )
+    return _row_to_correlation(row) if row else None
+
+
+async def list_correlations(
+    site_id: str | None = None, limit: int = 50
+) -> list[dict]:
+    pool = await get_db_pool()
+    clauses: list[str] = []
+    params: list = []
+    if site_id:
+        params.append(site_id)
+        clauses.append(f"site_id = ${len(params)}")
+    params.append(limit)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = await pool.fetch(
+        f"""
+        SELECT correlation_id, rule, site_id, sensor_id, window_start, window_end,
+               severity_before, severity_after, event_ids, alarm_ids, description,
+               detected_at
+        FROM correlations
+        {where}
+        ORDER BY detected_at DESC, correlation_id DESC
+        LIMIT ${len(params)}
+        """,
+        *params,
+    )
+    return [_row_to_correlation(row) for row in rows]

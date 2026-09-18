@@ -1,4 +1,4 @@
-import type { Alarm, Sensor, Site, Snapshot } from "../types";
+import type { Alarm, Correlation, Sensor, SensorTimeline, Site, SiteTimeline, Snapshot } from "../types";
 
 // VITE_API_BASE is set at build time for the Docker image
 // (e.g. http://localhost:8000). When empty, relative URLs are used so the
@@ -37,4 +37,9 @@ export const api = {
   acknowledge: (id: number) => postJson<Alarm>(`/alarms/${id}/acknowledge`),
   resolve: (id: number) => postJson<Alarm>(`/alarms/${id}/resolve`),
   reportE2E: (samples: number[]) => postJson<{ accepted: number }>("/metrics/e2e", { samples }),
+  siteTimeline: (siteId: string, limit = 100) =>
+    getJson<SiteTimeline>(`/sites/${encodeURIComponent(siteId)}/timeline?limit=${limit}`),
+  sensorTimeline: (sensorId: string, limit = 100) =>
+    getJson<SensorTimeline>(`/sensors/${encodeURIComponent(sensorId)}/timeline?limit=${limit}`),
+  correlations: (limit = 50) => getJson<Correlation[]>(`/correlations?limit=${limit}`),
 };

@@ -25,13 +25,14 @@ a **React** operator dashboard.
 5. [Backpressure](#backpressure)
 6. [Severity rules](#severity-rules)
 7. [Heartbeat / sensor liveness policy](#heartbeat--sensor-liveness-policy)
-8. [Failure recovery](#failure-recovery)
-9. [API](#api)
-10. [Performance](#performance)
-11. [Failure-test suite](#failure-test-suite)
-12. [Running locally](#running-locally)
-13. [Testing](#testing)
-14. [Trade-offs & known limitations](#trade-offs--known-limitations)
+8. [Correlation & escalation](#correlation--escalation)
+9. [Failure recovery](#failure-recovery)
+10. [API](#api)
+11. [Performance](#performance)
+12. [Failure-test suite](#failure-test-suite)
+13. [Running locally](#running-locally)
+14. [Testing](#testing)
+15. [Trade-offs & known limitations](#trade-offs--known-limitations)
 
 ---
 
@@ -242,6 +243,43 @@ the pytest integration test (`test_stale_sensor_becomes_offline`).
 
 ---
 
+## Correlation & escalation
+
+The worker runs a **pattern-detection scan** (`backend/app/processing/correlation.py`)
+every `CORRELATION_SCAN_INTERVAL` (default 5s). It looks for deterministic
+patterns in recent, non-resolved, non-escalated alarms and **escalates** the
+alarms involved; every detection is recorded in the `correlations` table and
+pushed to the dashboard.
+
+| Rule | Pattern | Escalation |
+|---|---|---|
+| `repeat_event` | ≥ `CORRELATION_REPEAT_THRESHOLD` (3) alarms of the **same type** from the **same sensor** within `CORRELATION_WINDOW` (60s) | involved alarms move **one severity step up** (low→medium→high→critical) |
+| `multi_signal_site` | ≥ `CORRELATION_MULTI_SIGNAL_THRESHOLD` (3) **distinct alarm types** at the **same site** within the window, with at least one high/critical | involved alarms escalate to **critical** |
+| `critical_burst` | ≥ `CORRELATION_BURST_THRESHOLD` (3) **critical** alarms at the **same site** within the window | recorded as a burst incident (severity stays critical) |
+
+Escalation is **idempotent**: only `escalated = false` alarms are considered,
+every escalation `UPDATE` is guarded on that flag, and a Redis lock
+(`sentinel:correlation:lock`) serializes scans across multiple worker replicas
+so the same alarms are never escalated or recorded twice. Escalated alarms keep
+their state (ACTIVE/ACKNOWLEDGED/RESOLVED); only severity is raised, which moves
+them up the dashboard's severity ordering.
+
+History is available through the timeline API and dashboard:
+
+* `GET /sites/{site_id}/timeline` — the site's current state, recent events
+  (with alarm status + escalation flag) and its correlated incidents.
+* `GET /sensors/{sensor_id}/timeline` — a sensor's recent events.
+* `GET /correlations` — detected patterns / escalations (optionally
+  `?site_id=`).
+
+The dashboard shows a **Correlations & escalations** panel (live via WebSocket
+`{kind:"correlations"}` plus a periodic poll) and a per-site **timeline** panel
+that opens when a site card is clicked. Timelines are read from the
+authoritative PostgreSQL state, so they survive restarts and dashboard
+reconnects.
+
+---
+
 ## Failure recovery
 
 ### A. Sustained baseline load
@@ -302,6 +340,8 @@ POST /alarms/{id}/acknowledge       ACTIVE -> ACKNOWLEDGED
 POST /alarms/{id}/resolve           ACTIVE/ACKNOWLEDGED -> RESOLVED
 GET  /sites, /sites/{id}
 GET  /sensors, /sensors/{id}
+GET  /sites/{id}/timeline, /sensors/{id}/timeline   history/timelines
+GET  /correlations                                  detected patterns/escalations
 ```
 
 WebSocket:

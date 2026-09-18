@@ -89,4 +89,37 @@ CREATE INDEX IF NOT EXISTS idx_alarms_status_severity ON alarms (status, severit
 CREATE INDEX IF NOT EXISTS idx_alarms_site_status     ON alarms (site_id, status);
 CREATE INDEX IF NOT EXISTS idx_alarms_sensor          ON alarms (sensor_id, status);
 
+-- Escalation / correlation support. `escalated` marks alarms that were raised
+-- by the correlation engine (or a burst); escalation is one-way and recorded
+-- in the `correlations` audit table.
+ALTER TABLE alarms ADD COLUMN IF NOT EXISTS escalated      BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE alarms ADD COLUMN IF NOT EXISTS escalated_at   TIMESTAMPTZ;
+ALTER TABLE alarms ADD COLUMN IF NOT EXISTS correlation_id BIGINT;
+
+CREATE INDEX IF NOT EXISTS idx_alarms_escalated ON alarms (escalated) WHERE escalated = false;
+
+-- ----------------------------------------------------------------------------
+-- correlations (pattern-detection / escalation audit trail)
+-- ----------------------------------------------------------------------------
+-- One row per detected correlation. `event_ids` / `alarm_ids` are the JSON
+-- arrays of the alarms involved in the detected pattern, and
+-- `severity_before -> severity_after` records the escalation that was applied.
+CREATE TABLE IF NOT EXISTS correlations (
+    correlation_id   BIGSERIAL PRIMARY KEY,
+    rule             TEXT NOT NULL,
+    site_id          TEXT NOT NULL REFERENCES sites(site_id) ON UPDATE CASCADE,
+    sensor_id        TEXT,
+    window_start     TIMESTAMPTZ NOT NULL,
+    window_end       TIMESTAMPTZ NOT NULL,
+    severity_before  TEXT NOT NULL,
+    severity_after   TEXT NOT NULL,
+    event_ids        JSONB NOT NULL DEFAULT '[]',
+    alarm_ids        JSONB NOT NULL DEFAULT '[]',
+    description      TEXT NOT NULL DEFAULT '',
+    detected_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_correlations_site_ts   ON correlations (site_id, detected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_correlations_detected  ON correlations (detected_at DESC);
+
 COMMIT;

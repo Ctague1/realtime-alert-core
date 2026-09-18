@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, wsUrl } from "../api/client";
-import type { Alarm, DashboardMessage, Sensor, Site } from "../types";
+import type { Alarm, Correlation, DashboardMessage, Sensor, Site } from "../types";
 
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting";
 
@@ -8,12 +8,14 @@ interface DashboardState {
   alarms: Alarm[];
   sites: Site[];
   sensors: Sensor[];
+  correlations: Correlation[];
   status: ConnectionStatus;
   connectedSince: number | null;
   latency: { totalMs: number; samples: number; e2eAvgMs: number; e2eP95Ms: number };
 }
 
 const MAX_ALARMS = 500;
+const MAX_CORRELATIONS = 50;
 const E2E_WINDOW = 200;
 
 function emptyState(): DashboardState {
@@ -21,6 +23,7 @@ function emptyState(): DashboardState {
     alarms: [],
     sites: [],
     sensors: [],
+    correlations: [],
     status: "connecting",
     connectedSince: null,
     latency: { totalMs: 0, samples: 0, e2eAvgMs: 0, e2eP95Ms: 0 },
@@ -118,6 +121,12 @@ export function useDashboard() {
     if (msg.kind === "sites" && msg.sites) {
       setState((prev) => ({ ...prev, sites: msg.sites! }));
     }
+    if (msg.kind === "correlations" && msg.correlations) {
+      setState((prev) => ({
+        ...prev,
+        correlations: mergeCorrelations(prev.correlations, msg.correlations!),
+      }));
+    }
   }, [recordLatency]);
 
   const fetchSnapshot = useCallback(async () => {
@@ -169,8 +178,12 @@ export function useDashboard() {
   }, [applyMessage, fetchSnapshot]);
 
   const pollPeriodic = useCallback(async () => {
-    const [sensors, sites] = await Promise.all([api.sensors(), api.sites()]);
-    setState((prev) => ({ ...prev, sensors, sites }));
+    const [sensors, sites, correlations] = await Promise.all([
+      api.sensors(),
+      api.sites(),
+      api.correlations(),
+    ]);
+    setState((prev) => ({ ...prev, sensors, sites, correlations }));
     // Report client-side end-to-end latency samples to the backend so
     // /metrics exposes real e2e numbers (not just the header display).
     const window = e2eRef.current;
@@ -218,4 +231,17 @@ function percentile(values: number[], pct: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   const idx = Math.min(sorted.length - 1, Math.ceil((pct / 100) * sorted.length) - 1);
   return Math.round(sorted[Math.max(idx, 0)]);
+}
+
+function mergeCorrelations(
+  current: Correlation[],
+  incoming: Correlation[],
+): Correlation[] {
+  const byId = new Map(current.map((c) => [c.correlation_id, c]));
+  for (const c of incoming) {
+    if (!byId.has(c.correlation_id)) byId.set(c.correlation_id, c);
+  }
+  return [...byId.values()]
+    .sort((a, b) => b.correlation_id - a.correlation_id)
+    .slice(0, MAX_CORRELATIONS);
 }

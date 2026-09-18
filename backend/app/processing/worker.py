@@ -27,8 +27,10 @@ from ..db import get_db_pool
 from ..logging_config import get_logger
 from ..metrics import get_metrics
 from ..redis_client import ensure_stream_and_group, get_redis, stream_length
+from ..services import queries
 from ..services.dashboard_hub import get_hub
 from ..services.state_service import process_batch, recompute_all_sites
+from .correlation import detect_correlations
 from .liveness import offline_sensor_count, scan_liveness
 from .normalize import normalize_event, parse_source_ts, utcnow
 
@@ -55,6 +57,7 @@ class ProcessingWorker:
             asyncio.create_task(self._liveness_scan(), name="worker-liveness"),
             asyncio.create_task(self._metrics_export(), name="worker-metrics"),
             asyncio.create_task(self._site_recompute(), name="worker-sites"),
+            asyncio.create_task(self._correlation_scan(), name="worker-correlations"),
         ]
         try:
             while not self._stop.is_set():
@@ -303,6 +306,52 @@ class ProcessingWorker:
             try:
                 await asyncio.wait_for(
                     self._stop.wait(), timeout=settings.site_recompute_interval
+                )
+            except asyncio.TimeoutError:
+                continue
+
+    # -------------------------------------------------------- correlation
+    async def _correlation_scan(self) -> None:
+        """Periodically detect correlated/pattern events and escalate.
+
+        Detection is idempotent (only non-escalated alarms are considered) and
+        serialized across worker replicas via a Redis lock. Escalated alarms
+        and detected correlations are pushed to the dashboard.
+        """
+        settings = self.settings
+        while not self._stop.is_set():
+            try:
+                pool = await get_db_pool()
+                correlations = await detect_correlations(pool)
+                if correlations:
+                    # Batch-fetch all involved alarms in a single query.
+                    alarm_ids = [
+                        alarm_id
+                        for corr in correlations
+                        for alarm_id in corr["alarm_ids"]
+                    ]
+                    alarms_by_id = await queries.get_alarms(alarm_ids)
+                    alarm_updates = [
+                        {"alarm": alarm} for alarm in alarms_by_id.values()
+                    ]
+                    # Cap live broadcasts: the dashboard polls /alarms and
+                    # /correlations every 10s, so anything not broadcast here
+                    # is picked up by polling; keeping the frames modest avoids
+                    # multi-megabyte WebSocket messages.
+                    if alarm_updates:
+                        await get_hub().publish(
+                            {"kind": "alarms", "updates": alarm_updates[:250]}
+                        )
+                    await get_hub().publish(
+                        {"kind": "correlations", "correlations": correlations[:100]}
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("correlation scan failed")
+            try:
+                await asyncio.wait_for(
+                    self._stop.wait(), timeout=settings.correlation_scan_interval
                 )
             except asyncio.TimeoutError:
                 continue

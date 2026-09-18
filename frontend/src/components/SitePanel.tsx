@@ -1,7 +1,13 @@
 import type { Site } from "../types";
 import { SEVERITY_RANK } from "../types";
 
-export function SitePanel({ sites }: { sites: Site[] }) {
+interface Props {
+  sites: Site[];
+  onSelectSite: (siteId: string) => void;
+  selectedSiteId: string | null;
+}
+
+export function SitePanel({ sites, onSelectSite, selectedSiteId }: Props) {
   const sorted = [...sites].sort(
     (a, b) =>
       SEVERITY_RANK[b.highest_active_severity ?? "informational"] -
@@ -13,13 +19,20 @@ export function SitePanel({ sites }: { sites: Site[] }) {
       <h2>Site state</h2>
       <div className="site-grid">
         {sorted.map((site) => (
-          <div key={site.site_id} className={`site-card sev-${site.highest_active_severity ?? "none"}`}>
+          <button
+            key={site.site_id}
+            className={`site-card sev-${site.highest_active_severity ?? "none"} ${
+              site.site_id === selectedSiteId ? "selected" : ""
+            }`}
+            onClick={() => onSelectSite(site.site_id)}
+            title={`View ${site.site_id} timeline`}
+          >
             <div className="site-id">{site.site_id}</div>
             <div className="site-count">{site.active_alarm_count} active</div>
             <div className="site-sev">
               {site.highest_active_severity ? site.highest_active_severity : "clear"}
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </section>
