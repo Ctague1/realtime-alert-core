@@ -1,0 +1,113 @@
+name: sentinel
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel
+      POSTGRES_DB: sentinel
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [sentinel]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # AOF persistence: see README for the exact durability guarantee.
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [sentinel]
+    restart: unless-stopped
+
+  # Optional self-contained sensor generator. Start the whole system (no
+  # manual host process) with:
+  #   SENSOR_WS_URL=ws://sensor:8765 docker compose --profile sensor up -d --build
+  # Without this profile the backend expects the generator to run manually on
+  # the host (ws://host.docker.gateway:8765) - see README.
+  sensor:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "scripts/stream.py"]
+    environment:
+      RATE: ${SENSOR_RATE:-200}
+    networks: [sentinel]
+    restart: unless-stopped
+    profiles: ["sensor"]
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: &backend_env
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: sentinel
+      PGUSER: sentinel
+      PGPASSWORD: sentinel
+      REDIS_URL: redis://redis:6379/0
+      # The sensor stream is normally run manually on the host (see README);
+      # this reaches the host from inside the container. When the optional
+      # "sensor" service is active, override with SENSOR_WS_URL=ws://sensor:8765.
+      SENSOR_WS_URL: ${SENSOR_WS_URL:-ws://host.docker.gateway:8765}
+      CONSUMER_NAME: backend-1
+      LOG_LEVEL: INFO
+    extra_hosts:
+      - "host.docker.gateway:host-gateway"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [sentinel]
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *backend_env
+      CONSUMER_NAME: worker-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [sentinel]
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks: [sentinel]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  sentinel:
+    driver: bridge
