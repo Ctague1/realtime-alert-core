@@ -185,7 +185,7 @@ memory:
    propagating TCP backpressure to the generator (whose `send` then blocks
    instead of discarding).
 3. **Batched writes** — the worker persists events in single multi-row
-   transactions (default batch 200), which sustains the generator's actual
+   transactions (default batch 100), which sustains the generator's actual
    rate (~1000 events/s) with headroom.
 4. **Bounded concurrency / DB pooling** — a bounded asyncpg pool; the worker
    reads one batch at a time.
@@ -392,7 +392,7 @@ events/s because the simulator emits a 500-event burst ~1% of the time.
 Interpretation:
 
 - _In-process processing latency_ is well under the **100 ms** target: the
-  worker persists each batch of up to 200 events in ~55 ms (p50).
+  worker persists each batch of up to 100 events in ~55 ms (p50).
 - _Queueing latency_ is the time an accepted event waits in the durable
   backlog before a worker reads it; it rises during bursts and falls back to
   zero as the backlog drains (test **B**).
