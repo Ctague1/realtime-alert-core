@@ -7,11 +7,11 @@ interface BrowsePageProps<T> {
   title: string;
   subtitle?: string;
   backHref?: string;
-  filters?: (props: { setPage: (page: number) => void }) => ReactNode;
+  filters?: (props: { setPage: (page: number) => void; refetch: () => void }) => ReactNode;
   fetcher: (page: number, pageSize: number) => Promise<Page<T>>;
   /** Serialized active filters; any change resets pagination to page 1. */
   paramsKey: string;
-  renderRow: (item: T) => ReactNode;
+  renderRow: (item: T, ctx: { setPage: (page: number) => void; refetch: () => void }) => ReactNode;
   rowKey: (item: T) => string | number;
   emptyLabel: string;
   listClassName?: string;
@@ -35,7 +35,7 @@ export function BrowsePage<T>({
   listClassName = "browse-list",
   initialPageSize = 50,
 }: BrowsePageProps<T>) {
-  const { data, loading, error, page, pageSize, setPage, setPageSize } = usePaginated<T>(
+  const { data, loading, error, page, pageSize, setPage, setPageSize, refetch } = usePaginated<T>(
     fetcher,
     paramsKey,
     initialPageSize,
@@ -43,6 +43,7 @@ export function BrowsePage<T>({
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = data?.total_pages ?? 0;
+  const rowCtx = { setPage, refetch };
 
   return (
     <div className="browse-page">
@@ -57,7 +58,7 @@ export function BrowsePage<T>({
         <span className="panel-count">{total.toLocaleString()}</span>
       </header>
 
-      {filters && <div className="browse-filters">{filters({ setPage })}</div>}
+      {filters && <div className="browse-filters">{filters(rowCtx)}</div>}
 
       {loading && !data && <div className="browse-status">Loading…</div>}
       {!loading && error && (
@@ -69,7 +70,7 @@ export function BrowsePage<T>({
           <div className={listClassName}>
             {items.map((item) => (
               <div key={rowKey(item)} className="browse-item">
-                {renderRow(item)}
+                {renderRow(item, rowCtx)}
               </div>
             ))}
           </div>

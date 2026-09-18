@@ -228,19 +228,23 @@ export function useDashboard() {
     try {
       const updated = await api.acknowledge(alarm.alarm_id);
       applyMessage({ kind: "alarm", alarm: updated });
+      // Counts come from /stats; refresh immediately so the summary bar
+      // reflects the change instead of waiting for the next poll.
+      void fetchStats();
     } catch (err) {
       console.error("acknowledge failed", err);
     }
-  }, [applyMessage]);
+  }, [applyMessage, fetchStats]);
 
   const resolve = useCallback(async (alarm: Alarm) => {
     try {
       const updated = await api.resolve(alarm.alarm_id);
       applyMessage({ kind: "alarm", alarm: updated });
+      void fetchStats();
     } catch (err) {
       console.error("resolve failed", err);
     }
-  }, [applyMessage]);
+  }, [applyMessage, fetchStats]);
 
   return { ...state, acknowledge, resolve };
 }

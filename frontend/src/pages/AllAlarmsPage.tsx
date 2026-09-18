@@ -62,7 +62,19 @@ export function AllAlarmsPage({ initialStatus, onAcknowledge, onResolve }: Props
         })
       }
       paramsKey={paramsKey}
-      renderRow={(a) => <AlarmRow alarm={a} onAcknowledge={onAcknowledge} onResolve={onResolve} />}
+      renderRow={(a, ctx) => (
+        <AlarmRow
+          alarm={a}
+          onAcknowledge={async (alarm) => {
+            await onAcknowledge(alarm);
+            ctx.refetch();
+          }}
+          onResolve={async (alarm) => {
+            await onResolve(alarm);
+            ctx.refetch();
+          }}
+        />
+      )}
       rowKey={(a) => a.alarm_id}
       emptyLabel="No alarms match the current filters."
     />
